@@ -29,6 +29,7 @@ bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN, skip_pending=True)
 API_URL = "https://themuslimgpt.com/api/chat/send"
 BASE_HEADERS = {
     "Content-Type": "application/json",
+    "Accept": "application/json",  # ← تمت الإضافة
     "Origin": "https://themuslimgpt.com",
     "Referer": "https://themuslimgpt.com/chat",
     "x-requested-with": "com.themuslimgpt.app"
@@ -60,11 +61,13 @@ def build_context_prompt(user_id, new_message):
         else:
             history += f"البوت: {text}\n"
     full_prompt = f"{history}المستخدم: {new_message}\nالبوت:"
-    if len(full_prompt) > 3800:
-        full_prompt = full_prompt[-3800:]
+    # تقليص الطول بشكل أكبر (2000 بدلاً من 3800)
+    if len(full_prompt) > 2000:
+        full_prompt = full_prompt[-2000:]
+        logger.info(f"تم تقليص الرسالة إلى {len(full_prompt)} حرف")
     return full_prompt
 
-# ------------------- SessionManager (نفسه بالكامل) -------------------
+# ------------------- SessionManager محسن -------------------
 class SessionManager:
     def __init__(self):
         self.session_id = None
@@ -72,14 +75,15 @@ class SessionManager:
         self._init_session()
 
     def _init_session(self):
+        # استخدام fallback الثابت الذي كان يعمل سابقاً
+        self.session_id = "7ffb6e3c-9a51-4d34-a233-78c769983397"
+        logger.info(f"تم تعيين sessionId مبدئي: {self.session_id}")
+        # محاولة تحديثه من الخادم (قد لا ينجح لكن لا بأس)
         try:
             resp = requests.get("https://themuslimgpt.com/api/auth/user", headers=BASE_HEADERS, timeout=10)
             self._extract_sid_from_response(resp)
         except:
             pass
-        if not self.session_id:
-            self.session_id = "7ffb6e3c-9a51-4d34-a233-78c769983397"
-            logger.warning(f"استخدم fallback sid: {self.session_id}")
 
     def _extract_sid_from_response(self, response):
         if 'set-cookie' in response.headers:
@@ -101,6 +105,7 @@ class SessionManager:
 
     def get_headers(self):
         headers = BASE_HEADERS.copy()
+        # اختيار User-Agent عشوائي
         user_agents = [
             "Mozilla/5.0 (Linux; Android 10; M2006C3LG) AppleWebKit/537.36 Chrome/148.0.7778.120 Mobile Safari/537.36",
             "Mozilla/5.0 (Linux; Android 11; SM-G991B) AppleWebKit/537.36 Chrome/147.0.0.0 Mobile Safari/537.36",
@@ -113,23 +118,9 @@ class SessionManager:
 
     def refresh_session(self):
         with self.lock:
-            try:
-                resp = requests.get("https://themuslimgpt.com/", headers=BASE_HEADERS, timeout=10)
-                if self._extract_sid_from_response(resp):
-                    logger.info("تم تجديد الجلسة عبر GET /")
-                    return True
-            except:
-                pass
-            try:
-                resp = requests.get("https://themuslimgpt.com/api/auth/user", headers=BASE_HEADERS, timeout=10)
-                if self._extract_sid_from_response(resp):
-                    logger.info("تم تجديد الجلسة عبر /api/auth/user")
-                    return True
-            except:
-                pass
-            new_sid = str(uuid.uuid4())
-            self.session_id = new_sid
-            logger.warning(f"تم توليد sessionId عشوائي: {new_sid}")
+            # لا نستخدم توليد عشوائي أبداً، فقط نستخدم fallback الثابت
+            self.session_id = "7ffb6e3c-9a51-4d34-a233-78c769983397"
+            logger.info(f"إعادة تعيين sessionId إلى الثابت: {self.session_id}")
             return True
 
     def refresh_from_api_response(self, response):
@@ -137,15 +128,17 @@ class SessionManager:
             self._extract_sid_from_response(response)
 
     def is_session_valid(self):
+        # نعتبر الجلسة صالحة دائماً لأننا نستخدم fallback الثابت
+        # ولكن نتحقق من صحة الـ cookie عبر طلب خفيف
         if not self.session_id:
             return False
         try:
             resp = requests.get("https://themuslimgpt.com/api/auth/user", headers=self.get_headers(), timeout=10)
             return resp.status_code in (200, 304)
         except:
-            return False
+            return True  # في حال فشل الاتصال، نفترض أنها صالحة
 
-# ------------------- SmartRateLimiter (نفسه) -------------------
+# ------------------- SmartRateLimiter -------------------
 class SmartRateLimiter:
     def __init__(self):
         self.limit = 15
@@ -175,28 +168,29 @@ class SmartRateLimiter:
 rate_limiter = SmartRateLimiter()
 session_mgr = SessionManager()
 
-# ------------------- وظيفة الرد -------------------
+# ------------------- وظيفة الرد المحسنة -------------------
 def get_muslimgpt_response(user_id, user_message, retry=True, attempt=0):
-    time.sleep(random.uniform(1, 3))
+    # تأخير صغير جداً (ليس ضرورياً في Webhook)
+    time.sleep(random.uniform(0.5, 1))
     rate_limiter.wait_if_needed()
 
-    if not session_mgr.is_session_valid():
-        logger.warning("الجلسة غير صالحة، نجددها...")
-        if not session_mgr.refresh_session():
-            return "❌ تعذر تجديد الجلسة. انتظر دقيقة ثم حاول مجدداً."
-
     full_message = build_context_prompt(user_id, user_message)
+    # نضمن أن sessionId في payload يتطابق مع الـ Cookie
+    current_sid = session_mgr.session_id
     payload = {
-        "sessionId": session_mgr.session_id,
+        "sessionId": current_sid,
         "message": full_message,
         "isVoice": False,
         "timezone": "Africa/Algiers"
     }
+    
+    # طباعة تشخيصية (ستظهر في logs Render)
+    logger.info(f"إرسال طلب: sessionId={current_sid}, طول الرسالة={len(full_message)}")
+    
     try:
         response = requests.post(API_URL, json=payload, headers=session_mgr.get_headers(), timeout=25)
-        rate_limiter.update_from_headers(response.headers)
-        session_mgr.refresh_from_api_response(response)
-
+        logger.info(f"رد الخادم: {response.status_code}")
+        
         if response.status_code == 200:
             data = response.json()
             reply = data.get("text") or data.get("content")
@@ -205,29 +199,38 @@ def get_muslimgpt_response(user_id, user_message, retry=True, attempt=0):
                 add_to_context(user_id, "assistant", reply)
                 return reply
             else:
-                return f"⚠️ تنسيق غير متوقع: {data}"
-        elif response.status_code in (401, 403) and retry and attempt < 3:
-            time.sleep(2 ** attempt)
+                logger.warning(f"تنسيق رد غير متوقع: {data}")
+                return f"⚠️ تنسيق غير متوقع"
+        elif response.status_code == 400:
+            logger.error(f"خطأ 400 - نص الخطأ: {response.text[:200]}")
+            # نحاول تحديث الجلسة (إعادة تعيين sessionId إلى الثابت)
+            session_mgr.refresh_session()
+            if retry and attempt < 1:
+                logger.info("محاولة إعادة الإرسال بعد تجديد الجلسة...")
+                time.sleep(1)
+                return get_muslimgpt_response(user_id, user_message, retry=False, attempt=attempt+1)
+            else:
+                return "❌ خطأ 400: الطلب غير صالح. تم تجديد الجلسة، حاول مجدداً."
+        elif response.status_code in (401, 403) and retry and attempt < 2:
+            session_mgr.refresh_session()
+            time.sleep(1)
             return get_muslimgpt_response(user_id, user_message, retry=False, attempt=attempt+1)
         elif response.status_code == 429:
-            wait = int(response.headers.get('ratelimit-reset', 90)) + 2
+            wait = int(response.headers.get('ratelimit-reset', 30)) + 2
             time.sleep(wait)
             return get_muslimgpt_response(user_id, user_message, retry, attempt+1)
         else:
             return f"❌ خطأ {response.status_code}"
     except requests.exceptions.Timeout:
-        if retry and attempt < 2:
-            wait_time = 5 + (attempt * 5)
-            time.sleep(wait_time)
-            return get_muslimgpt_response(user_id, user_message, retry=False, attempt=attempt+1)
-        else:
-            return ("⏰ الخادم لا يستجيب حالياً\nحاول بعد 30 ثانية.")
-    except Exception as e:
-        logger.error(f"خطأ: {e}")
-        if retry and attempt < 2:
+        logger.error("انتهت المهلة")
+        if retry and attempt < 1:
             time.sleep(3)
             return get_muslimgpt_response(user_id, user_message, retry=False, attempt=attempt+1)
-        return f"❌ خطأ فني: {str(e)[:100]}"
+        else:
+            return "⏰ الخادم لا يستجيب، حاول بعد قليل."
+    except Exception as e:
+        logger.error(f"استثناء: {e}")
+        return f"❌ فشل: {str(e)[:100]}"
 
 # ------------------- دوال البوت (أزرار وأوامر) -------------------
 def start_keyboard():
@@ -318,7 +321,7 @@ def handle_all_messages(message):
 
 # ------------------- خادم Flask مع Webhook -------------------
 app = Flask(__name__)
-WEBHOOK_PATH = f"/{TELEGRAM_BOT_TOKEN}"  # مسار سري
+WEBHOOK_PATH = f"/{TELEGRAM_BOT_TOKEN}"
 
 @app.route(WEBHOOK_PATH, methods=['POST'])
 def webhook():
@@ -335,16 +338,17 @@ def index():
 
 if __name__ == "__main__":
     logger.info("✅ تشغيل البوت بنظام Webhook...")
-    # إزالة أي webhook قديم وتعيين الجديد
     bot.remove_webhook()
     time.sleep(1)
-    # رابط الخدمة على Render (يتم ضبطه تلقائياً عبر متغير البيئة RENDER_EXTERNAL_HOSTNAME)
     hostname = os.environ.get("RENDER_EXTERNAL_HOSTNAME")
     if not hostname:
         logger.error("RENDER_EXTERNAL_HOSTNAME غير موجود، تأكد من النشر على Render")
-        exit(1)
-    webhook_url = f"https://{hostname}{WEBHOOK_PATH}"
-    bot.set_webhook(url=webhook_url)
-    logger.info(f"Webhook set to {webhook_url}")
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host='0.0.0.0', port=port)
+        # في حالة التشغيل المحلي، نستخدم polling كبديل
+        logger.info("التبديل إلى وضع polling المحلي...")
+        bot.infinity_polling()
+    else:
+        webhook_url = f"https://{hostname}{WEBHOOK_PATH}"
+        bot.set_webhook(url=webhook_url)
+        logger.info(f"Webhook set to {webhook_url}")
+        port = int(os.environ.get("PORT", 10000))
+        app.run(host='0.0.0.0', port=port)
