@@ -242,7 +242,7 @@ def start_keyboard():
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     bot.send_message(message.chat.id,
-        "🌟 *أهلاً بك في بوت MuslimGPT المتطور* 🌟\n
+        "🌟 *أهلاً بك في بوت MuslimGPT المتطور* 🌟\n\n"
         "• /clear - مسح ذاكرة المحادثة\n"
         "• /stats - إحصائيات (للمطور)\n\n"
         "✍️ *طور بواسطة:* `By FaresCodeX`",
