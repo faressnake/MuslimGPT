@@ -242,8 +242,7 @@ def start_keyboard():
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     bot.send_message(message.chat.id,
-        "🌟 *أهلاً بك في بوت MuslimGPT المتطور* 🌟\n\n"
-        "أنا بوت ذكي يتذكر محادثتك (آخر 10 رسائل).\n"
+        "🌟 *أهلاً بك في بوت MuslimGPT المتطور* 🌟\n
         "• /clear - مسح ذاكرة المحادثة\n"
         "• /stats - إحصائيات (للمطور)\n\n"
         "✍️ *طور بواسطة:* `By FaresCodeX`",
@@ -270,8 +269,6 @@ def callback_handler(call):
     elif call.data == "about":
         about_text = (
             "🤖 *عن البوت:*\n\n"
-            "• يستخدم API MuslimGPT.\n"
-            "• سياق المحادثة (آخر 10 رسائل).\n"
             "• تجديد الجلسة تلقائي.\n"
             "• إدارة ذكية للمعدل.\n\n"
             "👨‍💻 المطور: `FaresCodeX`"
