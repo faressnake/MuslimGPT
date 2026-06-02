@@ -336,6 +336,33 @@ def webhook():
 def index():
     return "Bot is running"
 
+# ------------------- API للواجهة الأمامية -------------------
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+
+# تفعيل CORS لموقعك
+CORS(app)
+
+@app.route('/chat', methods=['POST', 'OPTIONS'])
+def chat_api():
+    if request.method == 'OPTIONS':
+        return '', 200
+    
+    try:
+        data = request.json
+        user_message = data.get('message', '')
+        visitor_id = data.get('visitor_id', 'web_anonymous')
+        
+        if not user_message:
+            return jsonify({'error': 'الرسالة فارغة'}), 400
+        
+        # استخدام visitor_id بدلاً من telegram user_id
+        reply = get_muslimgpt_response(visitor_id, user_message)
+        return jsonify({'reply': reply})
+    except Exception as e:
+        logger.error(f"خطأ في /chat: {e}")
+        return jsonify({'error': str(e)}), 500
+        
 if __name__ == "__main__":
     logger.info("✅ تشغيل البوت بنظام Webhook...")
     bot.remove_webhook()
