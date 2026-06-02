@@ -10,8 +10,7 @@ import random
 import os
 from collections import deque
 from datetime import datetime
-from flask import Flask, request, abort
-
+from flask import Flask, request, abort, jsonify
 # ------------------- إعدادات أساسية -------------------
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -337,7 +336,6 @@ def index():
     return "Bot is running"
 
 # ------------------- API للواجهة الأمامية -------------------
-from flask import Flask, request, jsonify
 from flask_cors import CORS
 
 # تفعيل CORS لموقعك
